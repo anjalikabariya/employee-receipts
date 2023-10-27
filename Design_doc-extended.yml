@@ -1,0 +1,178 @@
+Requirements: 
+Expense tracking project - 
+Employee UI - Form for user input. Accept email/employee-id, date, category, amount, description
+            - List of expenses created by the employee. 
+            - Options to edit, delete, create or view status. 
+Admin UI - List of expenses. Provide options for approval/rejection, detailed view, comment/qeury.
+
+RDBMS Tables- Employee, Expenses, Categories
+Authentication and authorization in place
+
+Advanced -
+reimbursement_method(bank account/salary), comments, image
+
+Data models:
+
+- employee: # to store employee information
+  emp_id - int, primary_key
+  email - string, unique=True
+  password - string
+  role - string, [admin, employee]
+  total_expenses - decimal
+  total_expense_limit_of_employee - decimal
+
+  index - (emp_id, role)
+
+- categories: # to store categories information
+  category_id - int, primary_key
+  name - string, unique=True
+  limit_per_employee - decimal
+
+- expenses: # to store expenses information
+  exp_id - int, primary_key
+  emp_id - int, foreign_key
+  category_id - int, foreign_key
+  amount - decimal
+  description - string
+  date - date, default=utcnow
+  comments - string, array of strings #doubt
+  image - string, (filepath) # optional advanced
+
+- expense_status:
+  id_expense_status
+  exp_id, idx
+  status
+  created_at
+
+API endpoints:
+
+# Employee registration:
+
+POST /employee/register
+  Request:
+    email: string
+    password: string
+    role: string
+  Response: 
+    success: true/false # allows employee/admin to register
+    
+POST /employee/login
+  Request:
+    email: string
+    password: string
+    role: string
+  Response: 
+    success: true/false # allows employee/admin to login and receive auth token
+
+# Employee UI
+
+POST /expenses/create # to create a new expense
+  Request:
+    emp_id: id,
+    date: date,
+    category_id: id,
+    amount: decimal,
+    description: string
+  Response:
+    success: true/false
+
+GET /expenses # to view all the expenses created by logged in employee
+  Request:
+    emp_id: id
+  Response:
+    expenses: [...{category,amount, description, date, expense_status, comments}]
+
+PUT /expenses/{exp_id} # to update an existing expense created by logged in employee
+  Request:
+    exp_id: id
+    category_id: id
+    amount: decimal
+    description: string
+    date: date
+  Response:
+    success: true/false
+
+DELETE /expenses/{exp_id} # to delete an existing expense created by logged in employee
+  Request:
+    exp_id: id
+  Response:
+    success: true/false
+
+
+# Admin UI
+
+GET /admin/expenses # to view list of all the expenses 
+  Request:
+    emp_id: id
+  Response:
+    expenses_list: [...{emp_id, category, amount, description, date, expense_status, comments, limit_per_employee, total_expenses, total_expense_limit_of_employee}]
+
+
+PATCH /admin/expenses/{exp_id} # to update fields of an existing expense by performing operations like approve/reject/comment
+  Request:
+    exp_id: id
+    expense_status: enum, [approved, rejected, pending, actionRequired] 
+    comment: string
+  Response: #updated expense
+    success: true/false
+
+
+GET /expenses/{exp_id} # to get expense details by exp_id
+  Request:
+    emp_id: id
+    exp_id: id
+  Response:
+    expense: {emp_id, category, amount, description, date, expense_status, comments, limit_per_employee, total_expenses, total_expense_limit_of_employee}
+
+Controllers:
+
+authentication_controller:
+  register(email, password, role):
+    # validate email
+    # create a new user account with new emp_id
+    # assign total_expense_limit_of_employee e.g. CAD 1000
+    # total_expenses = 0
+
+  login(email, password):
+    # authenticate user
+    # authorize access as per user role
+
+employee_controller:
+  # @POST
+  create_expense(emp_id, category_id, date, amount, description):
+    # validate employee, total_expenses, total_expense_limit_of_employee 
+    # validate expense_limit for category_id
+    # create a new expense entry
+
+  # @GET
+  get_expenses(emp_id):
+    # return a list of expenses created by employee
+
+  # @PUT
+  update_expense(exp_id, category_id, date, amount, description):
+    # validate employee, total_expenses, total_expense_limit_of_employee 
+    # validate expense_limit for category_id
+    # update expense entry
+
+  # @DELETE
+  delete_expense(exp_id):
+    # Return error if expense is already approved
+    # delete expense
+    # update total_expenses to reflect changes
+
+admin_controller:
+  # @GET
+  get_expenses():
+    # validate admin
+    # return list of all expenses
+
+  # @PATCH
+  update_expense(exp_id, expense_status, comment):
+    # update expense
+
+expense_controller:
+  # @GET
+  get_expense_details(exp_id, emp_id):
+    # validate role of employee
+    # if admin, return expense details
+    # if not admin, validate if expense is created by emp_id, then return expense details

@@ -1,0 +1,116 @@
+
+Data models:
+
+user
+    user_id: int, auto_increment, pk
+    first_name: string
+    last_name: string
+    age: int
+    gender: string
+
+expense
+    expense_id: int, auto_increment, pk
+    user_id: int, fk # this will be foreign key to user table
+    amount: int
+    created_at: timestamp, default=utcnow
+
+    indexes:
+    idx(user_id, creatd_at)
+
+API endpoints:
+
+POST /expenses/create # Create expense API
+Request:
+    user_id: id # this can come as part of user session also but since we dont have the session so
+                we will just use from the request
+    amount: int
+    expense_ts: timestamp, default=utcnow
+Response:
+    success: true/false
+
+GET /expenses/user/{user_id}/{start_ts}/{end_ts} # Get total expense of given user for given time period
+Response:
+    total_expense: int
+
+GET /expenses/user/monthly/{user_id}/{month}/{year} # Get total monthly expense of given user for given month and year
+Response:
+    monthly_expense: int
+
+GET /expenses/user/report/{user_id} # Get user expense report
+Response:
+    monthly_avg: int
+    curr_year_total: int
+    min_expense: int
+    max_expense: int
+    all_time_avg: int
+
+
+Controllers:
+create_expense(user_id, amount, expense_ts): # creates a new entry in expense table
+  data = {
+    user_id: user_id, amount: amount, created_at: expense_ts
+  }
+  Expense.objects.create(**data)
+ 
+get_custom_range_expense(user_id, start_ts, end_ts): # Returns total expense for given user within given time period
+  # query expense table:
+  SELECT SUM(amount) AS total_expense 
+        FROM Expense
+        WHERE user_id = user_id AND 
+        created_at >= start_ts AND
+        created_at < end_ts;
+
+  monthly_expense = Expense.objects.filter(user_id=user_id, created_at>=start_ts, created_at<=end_ts).aggregate(SUM(amount))
+          
+  return total_expense
+
+get_monthly_expense(user_id, month, year ): # Returns total monthly expense for given user for given month and year
+  # query
+  SELECT SUM(amount) AS monthly_expense
+        FROM Expense
+        WHERE user_id = user_id AND
+        MONTH(created_at) = month AND
+        YEAR(created_at) = year;
+
+  monthly_expense = Expense.objects.filter(user_id=user_id, MONTH(created_at)=month, YEAR(created_at)=year).aggregate(SUM(amount))
+  return monthly_expense
+
+get_expense_report(user_id): # Returns expense report for given user
+  report = { monthly_avg, curr_year_total, min_expense, max_expense, all_time_avg }
+  # query
+  SELECT MIN(amount) as min_expense, 
+    MAX(amount) as max_expense,
+    AVG(amount) as all_time_avg,
+    SUM(CASE WHEN YEAR(created_at) == YEAR(CURRDATE()) THEN amount ELSE 0) as curr_year_total
+    # AVG(SUM()) as monthly_avg
+  FROM Expense
+  WHERE user_id = user_id
+
+  all_time_avg = Expense.objects.filter(user_id=user_id).aggregate(AVG(amount))
+  max_expense = Expense.objects.filter(user_id=user_id).aggregate(MAX(amount))
+  min_expense = Expense.objects.filter(user_id=user_id).aggregate(MIN(amount))
+  curr_year_total = Expense.objects.filter(user_id=user_id, YEAR(created_at)=YEAR(CURRDATE())).aggregate(SUM(amount))
+  first_entry = Expense.objects.filter(user_id=user_id).aggregate(MIN(created_at))
+  last_entry = Expense.objects.filter(user_id=user_id).aggregate(MAX(created_at))
+  monthly_expenses = get_monthly_expenses_between_dates(user_id, start_date, end_date)
+  monthly_avg = monthly_expenses/len(monthly_expenses)
+  
+  return report
+
+get_monthly_expenses_between_dates(user_id, start_date, end_date):
+    current_date = start_date.replace(day=1)  # Set the start date to the first day of the month
+    monthly_expenses = []
+
+    while current_date <= end_date:
+        month = current_date.month
+        year = current_date.year
+
+        expenses = get_monthly_expense(user_id, month, year)
+        monthly_expenses.append(expenses)
+
+        # Move to the first day of the next month
+        current_date = (current_date + timedelta(days=32)).replace(day=1)
+
+    return monthly_expenses
+
+
